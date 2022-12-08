@@ -3,17 +3,38 @@ import axios from 'axios'
 import Head from 'next/head'
 import Image from 'next/image'
 import styles from '../styles/Home.module.css'
+import initializeplayer from 'utils/initializeplayer'
+import queuehelper from 'utils/queueheler'
+import { io } from "socket.io-client";
+import httphelper from "../utils/httphelper"
+import song from "../interfaces/songInterface"
 
-interface track {
-    name: string,
-    uri: string
-}
 export default function Home() {
-    // Hook to initialize player
-    const [accesstoken, setAccesstoken] = useState<string>("")
-    const [queue, setQueue] = useState<[track]>([])
-    const [deviceid, setDeviceid] = useState<string>("")
 
+    // TODO: set state for current song being played and display it on the main page.
+    // TODO: get a refreshed access token from backend once the old token has expired.
+    
+    //const [currentlyplayingsong, setcurrentlyplayingsong] = useState<song>()
+
+    const [accesstoken, setAccesstoken] = useState<string>("")
+    const [queue, setQueue] = useState<song[]>([])
+    const [deviceid, setDeviceid] = useState<string>("")
+    const [socket, setSocket] = useState<any>()
+
+    // socket initialization
+    useEffect(() => {
+        var sock = io('http://localhost:3002')
+        sock.on('connect', () => {
+            console.log("Socket connected to server")
+        })
+        sock.on('queueupdated', async () => {
+            var newqueue = await queuehelper.getQueue()
+            setQueue(newqueue)
+        })
+        setSocket(sock)
+    }, [])
+
+    // player setup
     useEffect(() => {
         const script = document.createElement('script')
         script.src = "https://sdk.scdn.co/spotify-player.js";
@@ -21,16 +42,9 @@ export default function Home() {
 
 
         (async () => {
-            var token = await getToken()
+            var token = await httphelper.getTokenFromServerRequest()
             setAccesstoken(token)
             console.log(token)
-            //for testing only
-            //------
-            await axios({
-                method: 'get',
-                url: 'http://localhost:3000/genqueue',
-            })
-            //------
 
             document.body.appendChild(script);
             window.onSpotifyWebPlaybackSDKReady = () => {
@@ -72,78 +86,45 @@ export default function Home() {
         })()
 
     }, [])
-    const getToken = async () => {
-        console.log("getting token")
-        var token = await axios({
-            method: 'get',
-            url: "http://localhost:3000/token",
-            responseType: "text"
-        })
-        if (token.status === 200) {
-            console.log(token.data)
-            return token.data
+
+    const beginplayback = async () => {
+        if (queue.length === 0) {
+            console.log("queue empty")
+            return
+        }
+        var queuecopy = [...queue]
+        var song = queuecopy.shift()
+        if (song != undefined) {
+
+            // TODO: Handle request failed logic....
+            await httphelper.playSongRequest(song, deviceid, accesstoken)
+
+            // tell backend to remove the last song in queue
+            socket.emit("songplayed", () => {
+                console.log("emitted song played event.")
+            })
+            setTimeout(async () => {
+                beginplayback()
+            }, song.duration + 5000)
         }
         else {
-            console.log("Error getting token")
+            // TODO: remove the setQueue call since the queue will only be set on socket events.
+            console.log("Song was undefinded...playing next")
+            setQueue(queuecopy)
+            beginplayback()
         }
-        return ""
-    }
-    const playQueue = async () => {
-        if(accesstoken != ""){
-            await axios({
-                method: 'put',
-                url: 'https://api.spotify.com/v1/me/player',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${accesstoken}`
-                },
-                data: {
-                    device_ids: [`${deviceid}`]
-                }
-            })
-        }
-        else{
-            console.log("unable to change playback device as access token is null")
-        }
-        playsong(queue[0])
-    }
-    const playsong = async (song: track) => {
-        if (deviceid != "") {
-            var resp = await axios({
-                method: 'put',
-                url: `https://api.spotify.com/v1/me/player/play?device_id=${deviceid}`,
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${accesstoken}`
-                },
-                data: {
-                    uris: [song.uri]
-                }
-            })
-            debugger
-        }
-        else {
-            console.log("device id not set....player may not be available.")
-        }
-    }
-    const getQueue = async () => {
-        var resp = await axios({
-            method: 'get',
-            url: 'http://localhost:3000/getqueue'
-        })
-        debugger
-        setQueue(resp.data.queue)
+
     }
 
     return (
         <div>
-            {queue.map((track) => <li>{track.name}</li>)}
+            {queue.map((songInterface) => <li>{songInterface.name}</li>)}
             <div className="flex">
                 <div>
-                    <button onClick={() => { getQueue() }}>update queue</button>
+                    <button onClick={async () => { setQueue(await queuehelper.getQueue()) }}>update queue</button>
                 </div>
                 <div>
-                    <button onClick={() => { playQueue() }}>play queue</button>
+                    <button onClick={() => { beginplayback() }}>play queue</button>
                 </div>
             </div>
         </div>
