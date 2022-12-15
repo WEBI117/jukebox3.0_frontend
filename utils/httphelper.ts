@@ -1,10 +1,6 @@
 import axios from 'axios'
+import song from "../interfaces/songInterface"
 
-interface song {
-    name: string,
-    uri: string
-    duration: number
-}
 
 // class to handle outgoing http requests
 class httphelper {
@@ -18,17 +14,29 @@ class httphelper {
             responseType: "text"
         })
 
-        if(tokenRequest.status === 200){
+        if (tokenRequest.status === 200) {
             var token = tokenRequest.data
             console.log(`Token recieved from server: ${token}`)
             return token
         }
-        else{
+        else {
             console.error(`Token request to backend failed with status ${tokenRequest.status}`)
             return null
         }
     }
 
+    static async getQueueFromServer() {
+        var resp = await axios({
+            method: 'get',
+            url: 'http://localhost:3000/queue'
+        })
+        if (resp.status === 200) {
+            return resp.data.queue
+        }
+        else {
+            return []
+        }
+    }
     // SPOTIFY PLAYER REQUESTS
     // -----
     static async changePlaybackDeviceToBrowser(deviceid: string, accesstoken: string) {

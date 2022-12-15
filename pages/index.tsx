@@ -1,25 +1,36 @@
-import React, { useEffect, useState } from 'react'
-import axios from 'axios'
+import React, { useEffect, useState, useRef } from 'react'
 import Head from 'next/head'
 import Image from 'next/image'
 import styles from '../styles/Home.module.css'
 import initializeplayer from 'utils/initializeplayer'
-import queuehelper from 'utils/queueheler'
 import { io } from "socket.io-client";
 import httphelper from "../utils/httphelper"
 import song from "../interfaces/songInterface"
+
+//import useQueueState from '../hooks/QueueStateHook'
 
 export default function Home() {
 
     // TODO: set state for current song being played and display it on the main page.
     // TODO: get a refreshed access token from backend once the old token has expired.
-    
+
     //const [currentlyplayingsong, setcurrentlyplayingsong] = useState<song>()
+    //const [queue,setQueue] = useQueueState([])
 
     const [accesstoken, setAccesstoken] = useState<string>("")
-    const [queue, setQueue] = useState<song[]>([])
     const [deviceid, setDeviceid] = useState<string>("")
     const [socket, setSocket] = useState<any>()
+
+    // Queue State Management Hooks
+    // ------
+    // TODO: Extract into custom hook
+    // Usage: Simply use refQueue.current wherever you need queue.
+    const [queue, setQueue] = useState<song[]>([])
+    var refQueue = useRef(queue)
+    useEffect(() => {
+        refQueue.current = queue
+    }, [queue])
+    // ------
 
     // socket initialization
     useEffect(() => {
@@ -28,8 +39,8 @@ export default function Home() {
             console.log("Socket connected to server")
         })
         sock.on('queueupdated', async () => {
-            var newqueue = await queuehelper.getQueue()
-            setQueue(newqueue)
+            var newqueue = await httphelper.getQueueFromServer() as song[]
+            setQueue([...newqueue])
         })
         setSocket(sock)
     }, [])
@@ -88,40 +99,39 @@ export default function Home() {
     }, [])
 
     const beginplayback = async () => {
-        if (queue.length === 0) {
-            console.log("queue empty")
-            return
-        }
-        var queuecopy = [...queue]
-        var song = queuecopy.shift()
-        if (song != undefined) {
-
-            // TODO: Handle request failed logic....
-            await httphelper.playSongRequest(song, deviceid, accesstoken)
-
-            // tell backend to remove the last song in queue
-            socket.emit("songplayed", () => {
-                console.log("emitted song played event.")
+        if (refQueue.current.length != 0) {
+            var prom = new Promise((res, rej) => {
+                try {
+                    setTimeout(() => {
+                        console.log(refQueue.current)
+                        socket.emit("songplayed", () => {
+                            console.log("emitted song played event.")
+                        })
+                        res(refQueue.current)
+                    }, 5000)
+                }
+                catch (err) {
+                    rej(err)
+                }
             })
-            setTimeout(async () => {
-                beginplayback()
-            }, song.duration + 5000)
-        }
-        else {
-            // TODO: remove the setQueue call since the queue will only be set on socket events.
-            console.log("Song was undefinded...playing next")
-            setQueue(queuecopy)
+            await prom
             beginplayback()
         }
-
+        else {
+            // TODO: Add logic to play random song instead.
+            console.log('empty queue')
+        }
     }
 
     return (
         <div>
-            {queue.map((songInterface) => <li>{songInterface.name}</li>)}
+            {queue.map((song: song) => <li>{song.name}</li>)}
             <div className="flex">
                 <div>
-                    <button onClick={async () => { setQueue(await queuehelper.getQueue()) }}>update queue</button>
+                    <button onClick={async () => {
+                        var result = (await httphelper.getQueueFromServer())
+                        setQueue([...result])
+                    }}>update queue</button>
                 </div>
                 <div>
                     <button onClick={() => { beginplayback() }}>play queue</button>
