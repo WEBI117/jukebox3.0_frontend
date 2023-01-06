@@ -5,9 +5,13 @@ import styles from '../styles/Home.module.css'
 import initializeplayer from 'utils/initializeplayer'
 import { io } from "socket.io-client";
 import httphelper from "../utils/httphelper"
-import song from "../interfaces/songInterface"
+import track from "../interfaces/songInterface"
 
 //import useQueueState from '../hooks/QueueStateHook'
+interface timertest{
+    name: string,
+    timer: NodeJS.Timeout
+}
 
 export default function Home() {
 
@@ -21,11 +25,13 @@ export default function Home() {
     const [deviceid, setDeviceid] = useState<string>("")
     const [socket, setSocket] = useState<any>()
 
+    const [currentSongTimer, setCurrentSongTimer] = useState<timertest | null>(null)
+
     // Queue State Management Hooks
     // ------
     // TODO: Extract into custom hook
     // Usage: Simply use refQueue.current wherever you need queue.
-    const [queue, setQueue] = useState<song[]>([])
+    const [queue, setQueue] = useState<track[]>([])
     var refQueue = useRef(queue)
     useEffect(() => {
         refQueue.current = queue
@@ -39,7 +45,7 @@ export default function Home() {
             console.log("Socket connected to server")
         })
         sock.on('queueupdated', async () => {
-            var newqueue = await httphelper.getQueueFromServer() as song[]
+            var newqueue = await httphelper.getQueueFromServer() as track[]
             setQueue([...newqueue])
         })
         setSocket(sock)
@@ -98,34 +104,80 @@ export default function Home() {
 
     }, [])
 
-    const beginplayback = async () => {
-        if (refQueue.current.length != 0) {
-            var prom = new Promise((res, rej) => {
-                try {
-                    setTimeout(() => {
-                        console.log(refQueue.current)
-                        socket.emit("songplayed", () => {
-                            console.log("emitted song played event.")
-                        })
-                        res(refQueue.current)
-                    }, 5000)
-                }
-                catch (err) {
-                    rej(err)
-                }
-            })
-            await prom
-            beginplayback()
+    useEffect(() => {
+        console.log(currentSongTimer)
+    },[currentSongTimer])
+
+    const playSong = async (song: track) => {
+        var playRequest = await httphelper.playSongRequest(song, deviceid, accesstoken)
+        if(playRequest != undefined && (playRequest === 200 || playRequest == 202) ){
+            return true
         }
-        else {
-            // TODO: Add logic to play random song instead.
-            console.log('empty queue')
-        }
+        return false
     }
+    const clearCurrentSongTimer = () => {
+        if(currentSongTimer != null){
+            console.log(`clearing timer for ${currentSongTimer.name}`)
+            clearTimeout(currentSongTimer.timer)
+        }
+        setCurrentSongTimer(null)
+    }
+    const beginplayback = async () => {
+        try {
+            clearCurrentSongTimer()
+            if (refQueue.current.length != 0) {
+                var song = refQueue.current[0]
+                var songPlayed = await playSong(song)
+                if (songPlayed) {
+                    socket.emit("songplayed", () => {
+                        console.log("emitted song played event.")
+                    })
+                    var timer = setTimeout(() => {
+                        beginplayback()
+                    }, song.duration_ms + 5000);
+                    var name: string = song.name
+                    setCurrentSongTimer({name,timer})
+                }
+            }
+
+            else {
+                // TODO: Add logic to play random song instead.
+                console.log('empty queue')
+            }
+        }
+        catch (err) {
+            console.log(err)
+        }
+        return
+    }
+    //const beginplayback = async () => {
+    //    if (refQueue.current.length != 0) {
+    //        var prom = new Promise((res, rej) => {
+    //            try {
+    //                setTimeout(() => {
+    //                    console.log(refQueue.current)
+    //                    socket.emit("songplayed", () => {
+    //                        console.log("emitted song played event.")
+    //                    })
+    //                    res(refQueue.current)
+    //                }, 5000)
+    //            }
+    //            catch (err) {
+    //                rej(err)
+    //            }
+    //        })
+    //        await prom
+    //        beginplayback()
+    //    }
+    //    else {
+    //        // TODO: Add logic to play random song instead.
+    //        console.log('empty queue')
+    //    }
+    //}
 
     return (
         <div>
-            {queue.map((song: song) => <li>{song.name}</li>)}
+            {queue.map((song: track) => <li>{song.name}</li>)}
             <div className="flex">
                 <div>
                     <button onClick={async () => {
