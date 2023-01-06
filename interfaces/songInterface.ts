@@ -1,5 +1,5 @@
 export default interface track {
     name: string,
     uri: string
-    duration: number
+    duration_ms: number
 }
