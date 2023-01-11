@@ -6,9 +6,10 @@ import initializeplayer from 'utils/initializeplayer'
 import { io } from "socket.io-client";
 import httphelper from "../utils/httphelper"
 import track from "../interfaces/songInterface"
+import QRCode from "react-qr-code";
 
 //import useQueueState from '../hooks/QueueStateHook'
-interface timertest{
+interface timertest {
     name: string,
     timer: NodeJS.Timeout
 }
@@ -24,6 +25,7 @@ export default function Home() {
     const [accesstoken, setAccesstoken] = useState<string>("")
     const [deviceid, setDeviceid] = useState<string>("")
     const [socket, setSocket] = useState<any>()
+    const [serverip, setServerIP] = useState<string>("")
 
     const [currentSongTimer, setCurrentSongTimer] = useState<timertest | null>(null)
 
@@ -105,18 +107,25 @@ export default function Home() {
     }, [])
 
     useEffect(() => {
+        (async () => {
+            var ip = await httphelper.getServerDetails()
+            setServerIP(ip as string)
+        })()
+    }, [])
+
+    useEffect(() => {
         console.log(currentSongTimer)
-    },[currentSongTimer])
+    }, [currentSongTimer])
 
     const playSong = async (song: track) => {
         var playRequest = await httphelper.playSongRequest(song, deviceid, accesstoken)
-        if(playRequest != undefined && (playRequest === 200 || playRequest == 202) ){
+        if (playRequest != undefined && (playRequest === 200 || playRequest == 202)) {
             return true
         }
         return false
     }
     const clearCurrentSongTimer = () => {
-        if(currentSongTimer != null){
+        if (currentSongTimer != null) {
             console.log(`clearing timer for ${currentSongTimer.name}`)
             clearTimeout(currentSongTimer.timer)
         }
@@ -136,7 +145,7 @@ export default function Home() {
                         beginplayback()
                     }, song.duration_ms + 5000);
                     var name: string = song.name
-                    setCurrentSongTimer({name,timer})
+                    setCurrentSongTimer({ name, timer })
                 }
             }
 
@@ -188,6 +197,10 @@ export default function Home() {
                 <div>
                     <button onClick={() => { beginplayback() }}>play queue</button>
                 </div>
+            </div>
+            {/*Qr Code Div*/}
+            <div className='flex'>
+                <QRCode value={serverip} />
             </div>
         </div>
     )

@@ -37,6 +37,15 @@ class httphelper {
             return []
         }
     }
+
+    static async getServerDetails() {
+        var resp = await axios({
+            method: 'get',
+            url: 'http://localhost:3000/serverinfo'
+        })
+        return String(resp.data)
+    }
+    
     // SPOTIFY PLAYER REQUESTS
     // -----
     static async changePlaybackDeviceToBrowser(deviceid: string, accesstoken: string) {
@@ -78,6 +87,7 @@ class httphelper {
             return
         }
     }
+
 }
 
 export default httphelper
